@@ -1,195 +1,79 @@
 # 智伴小怪 — MCP 多模态桌面陪伴机器人
 
-（[English](README.md) | [日本語](README_ja.md)）
+（[English](README.md)）
 
 > 全国大学生物联网设计竞赛作品 · 桂林信息科技学院 · 团队「方寸之间」
 
-本仓库是「智伴小怪」桌面陪伴机器人的 ESP32-S3 固件源码。项目以 **ESP-IDF v5.5 + FreeRTOS** 为软件平台，把设备端硬件能力通过 **MCP（Model Context Protocol）** 标准化封装为工具接口，交由云端 AI 大模型自主发现与调用，构建「语音交互 → 大模型语义理解 → MCP 工具调用 → 多模态响应」的完整闭环，整机外形为自主 3D 建模的童趣风格机器犬。
+## 项目简介
 
-### 主要功能
+「智伴小怪」是一款面向 3–12 岁儿童的桌面陪伴机器人，整机外形为自主 3D 建模的童趣风格机器犬。设备以 ESP32-S3 为主控，通过 Wi-Fi 与云端 AI 大模型建立 WebSocket 长连接，完成语音对话、动作编排、情绪表情与环境感知。
 
-- **语音对话**：WebSocket 长连接 + OPUS 编解码，对接云端大模型完成知识问答、故事讲述等多轮交互
-- **仿生运动**：5 路 SG90 舵机 + LEDC-PWM 角度控制，内置招手 / 跳舞 / 走路 / 跳跃 / 俯身摆尾等动作组
+项目的核心思路是把设备端硬件能力统一抽象为 **MCP（Model Context Protocol）工具接口**：舵机、电机、温湿度传感器、记忆与提醒等能力都以 `self.*` 工具的形式注册，云端大模型可以自主发现并调用，形成「语音交互 → 大模型语义理解 → MCP 工具调用 → 多模态响应」的完整闭环。
+
+## 主要功能
+
+- **语音对话**：WebSocket 长连接 + OPUS 编解码，ESP-SR 离线唤醒，支持多轮问答与故事讲述
+- **仿生运动**：5 路 SG90 舵机（左前 / 右前 / 左后 / 右后 / 尾巴），内置招手、跳舞、走路、跳跃、俯身摆尾等动作组
 - **轮足双模**：四足步行与 N20 直流电机轮式移动二合一，形态切换约 3.2 秒
-- **环境感知**：AHT10 温湿度采集，双阈值滞回告警，超限数据经 MCP 上报云端联动语音关怀
+- **环境感知**：AHT10 温湿度采集，双阈值滞回告警，超限数据经 MCP 上报并联动语音关怀
 - **动态表情**：240×280 TFT 彩屏 + LVGL 实时渲染，随对话状态自动切换情绪
-- **记忆与升级**：NVS 持久化用户偏好与昵称，云端保存对话历史，支持 OTA 远程升级
+- **记忆与升级**：NVS 持久化昵称与偏好，云端保存对话历史，支持 OTA 远程升级
 
-### 仓库说明
+## 技术架构
 
-本仓库基于开源项目 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) v2 定制开发，沿用上游的板级支持、通信协议与 MCP 框架；「智伴小怪」的板级配置、动作控制、显示与感知逻辑在此基础上实现。构建方式与上游一致（ESP-IDF v5.5），见下文上游文档。
+| 项目 | 实现 |
+| --- | --- |
+| 主控 | ESP32-S3，16 MB Flash 分区表 |
+| 软件平台 | ESP-IDF v5.5 + FreeRTOS |
+| 音频 | I2S 全双工，16 kHz 采集 / 24 kHz 播放，OPUS 编解码，ESP-SR 唤醒词 |
+| 通信 | Wi-Fi + WebSocket（同时支持 MQTT + UDP） |
+| 显示 | ST7789 SPI TFT + LVGL，表情资源存放于 assets 分区 |
+| 运动 | LEDC-PWM 舵机（50 Hz）+ N20 减速电机（L298N 驱动） |
+| 感知 | AHT10 温湿度，I²C：SDA = GPIO9，SCL = GPIO8 |
 
-- 中文文档：本页
-- English： [README.md](README.md) ｜ 日本語： [README_ja.md](README_ja.md)
+### 设备端 MCP 工具
 
----
+| 工具 | 说明 |
+| --- | --- |
+| `self.servo.set_angle` / `self.servo.center_all` | 单路 / 全部舵机角度控制 |
+| `self.action.wave` / `dance` / `walk_forward` / `walk_backward` / `hop` / `stick_butt` / `wag_tail` / `transform` | 预设动作组 |
+| `self.motors.move` / `self.motors.demo` | 轮式移动与演示 |
+| `self.sensor.get_temperature` / `get_humidity` / `last_alert` | 温湿度读取与告警查询 |
+| `self.location.get` / `set`、`self.time.now`、`self.reminder.*` | 位置、时间与提醒管理 |
+| `self.emotion.record_keyword` / `self.emotion.report` | 情绪关键词记录与上报 |
 
-## 上游项目：小智 AI 聊天机器人（An MCP-based Chatbot）
+## 目录结构
 
-（中文 | [English](README.md) | [日本語](README_ja.md)）
+```
+main/
+├── boards/tangdou/    本项目的板级实现：舵机、电机、AHT10 驱动与板级 MCP 工具注册
+├── boards/common/     各板共用的显示、音频、按键、电源等驱动
+├── audio/             音频通道、唤醒词与服务
+├── display/           LVGL 界面与表情显示
+├── protocols/         WebSocket / MQTT 通信协议
+├── assets/            字体与表情资源
+├── application.cc     应用主流程与状态机
+└── mcp_server.cc      MCP 服务端实现
+partitions/v2/         分区表（默认 16 MB）
+scripts/               资源生成、语言生成、打包等工具
+docs/                  协议与二次开发文档
+```
 
-## 介绍
+## 构建与烧录
 
-👉 [人类：给 AI 装摄像头 vs AI：当场发现主人三天没洗头【bilibili】](https://www.bilibili.com/video/BV1bpjgzKEhd/)
+需要 [ESP-IDF v5.5](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/get-started/) 环境：
 
-👉 [手工打造你的 AI 女友，新手入门教程【bilibili】](https://www.bilibili.com/video/BV1XnmFYLEJN/)
+```bash
+idf.py set-target esp32s3
+idf.py menuconfig      # Xiaozhi Assistant → Board Type → Tangdou (糖豆)
+idf.py build
+idf.py -p <串口> flash monitor
+```
 
-小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
+首次上电后设备进入配网模式，按提示连接 Wi-Fi；配网与网络配置说明见 [docs/blufi_zh.md](docs/blufi_zh.md)。
 
-<img src="docs/mcp-based-graph.jpg" alt="通过MCP控制万物" width="320">
+## 致谢与许可
 
-### 版本说明
+本项目的固件框架、板级支持与通信协议基于开源项目 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 二次开发，「智伴小怪」在其之上实现了新的板级配置、舵机与电机控制、温湿度感知、表情显示及 MCP 工具集合。
 
-当前 v2 版本与 v1 版本分区表不兼容，所以无法从 v1 版本通过 OTA 升级到 v2 版本。分区表说明参见 [partitions/v2/README.md](partitions/v2/README.md)。
-
-使用 v1 版本的所有硬件，可以通过手动烧录固件来升级到 v2 版本。
-
-v1 的稳定版本为 1.9.2，可以通过 `git checkout v1` 来切换到 v1 版本，该分支会持续维护到 2026 年 2 月。
-
-### 已实现功能
-
-- Wi-Fi / ML307 Cat.1 4G
-- 离线语音唤醒 [ESP-SR](https://github.com/espressif/esp-sr)
-- 支持两种通信协议（[Websocket](docs/websocket_zh.md) 或 MQTT+UDP）
-- 采用 OPUS 音频编解码
-- 基于流式 ASR + LLM + TTS 架构的语音交互
-- 声纹识别，识别当前说话人的身份 [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- OLED / LCD 显示屏，支持表情显示
-- 电量显示与电源管理
-- 支持多语言（中文、英文、日文）
-- 支持 ESP32-C3、ESP32-S3、ESP32-P4 芯片平台
-- 通过设备端 MCP 实现设备控制（音量、灯光、电机、GPIO 等）
-- 通过云端 MCP 扩展大模型能力（智能家居控制、PC桌面操作、知识搜索、邮件收发等）
-- 自定义唤醒词、字体、表情与聊天背景，支持网页端在线修改 ([自定义Assets生成器](https://github.com/78/xiaozhi-assets-generator))
-
-## 硬件
-
-### 面包板手工制作实践
-
-详见飞书文档教程：
-
-👉 [《小智 AI 聊天机器人百科全书》](https://ccnphfhqs21z.feishu.cn/wiki/F5krwD16viZoF0kKkvDcrZNYnhb?from=from_copylink)
-
-面包板效果图如下：
-
-![面包板效果图](docs/v1/wiring2.jpg)
-
-### 支持 70 多个开源硬件（仅展示部分）
-
-- <a href="https://oshwhub.com/li-chuang-kai-fa-ban/li-chuang-shi-zhan-pai-esp32-s3-kai-fa-ban" target="_blank" title="立创·实战派 ESP32-S3 开发板">立创·实战派 ESP32-S3 开发板</a>
-- <a href="https://github.com/espressif/esp-box" target="_blank" title="乐鑫 ESP32-S3-BOX3">乐鑫 ESP32-S3-BOX3</a>
-- <a href="https://docs.m5stack.com/zh_CN/core/CoreS3" target="_blank" title="M5Stack CoreS3">M5Stack CoreS3</a>
-- <a href="https://docs.m5stack.com/en/atom/Atomic%20Echo%20Base" target="_blank" title="AtomS3R + Echo Base">M5Stack AtomS3R + Echo Base</a>
-- <a href="https://gf.bilibili.com/item/detail/1108782064" target="_blank" title="神奇按钮 2.4">神奇按钮 2.4</a>
-- <a href="https://www.waveshare.net/shop/ESP32-S3-Touch-AMOLED-1.8.htm" target="_blank" title="微雪电子 ESP32-S3-Touch-AMOLED-1.8">微雪电子 ESP32-S3-Touch-AMOLED-1.8</a>
-- <a href="https://github.com/Xinyuan-LilyGO/T-Circle-S3" target="_blank" title="LILYGO T-Circle-S3">LILYGO T-Circle-S3</a>
-- <a href="https://oshwhub.com/tenclass01/xmini_c3" target="_blank" title="虾哥 Mini C3">虾哥 Mini C3</a>
-- <a href="https://oshwhub.com/movecall/cuican-ai-pendant-lights-up-y" target="_blank" title="Movecall CuiCan ESP32S3">璀璨·AI 吊坠</a>
-- <a href="https://github.com/WMnologo/xingzhi-ai" target="_blank" title="无名科技Nologo-星智-1.54">无名科技 Nologo-星智-1.54TFT</a>
-- <a href="https://www.seeedstudio.com/SenseCAP-Watcher-W1-A-p-5979.html" target="_blank" title="SenseCAP Watcher">SenseCAP Watcher</a>
-- <a href="https://www.bilibili.com/video/BV1BHJtz6E2S/" target="_blank" title="ESP-HI 超低成本机器狗">ESP-HI 超低成本机器狗</a>
-
-<div style="display: flex; justify-content: space-between;">
-  <a href="docs/v1/lichuang-s3.jpg" target="_blank" title="立创·实战派 ESP32-S3 开发板">
-    <img src="docs/v1/lichuang-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/espbox3.jpg" target="_blank" title="乐鑫 ESP32-S3-BOX3">
-    <img src="docs/v1/espbox3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/m5cores3.jpg" target="_blank" title="M5Stack CoreS3">
-    <img src="docs/v1/m5cores3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/atoms3r.jpg" target="_blank" title="AtomS3R + Echo Base">
-    <img src="docs/v1/atoms3r.jpg" width="240" />
-  </a>
-  <a href="docs/v1/magiclick.jpg" target="_blank" title="神奇按钮 2.4">
-    <img src="docs/v1/magiclick.jpg" width="240" />
-  </a>
-  <a href="docs/v1/waveshare.jpg" target="_blank" title="微雪电子 ESP32-S3-Touch-AMOLED-1.8">
-    <img src="docs/v1/waveshare.jpg" width="240" />
-  </a>
-  <a href="docs/v1/lilygo-t-circle-s3.jpg" target="_blank" title="LILYGO T-Circle-S3">
-    <img src="docs/v1/lilygo-t-circle-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/xmini-c3.jpg" target="_blank" title="虾哥 Mini C3">
-    <img src="docs/v1/xmini-c3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/movecall-cuican-esp32s3.jpg" target="_blank" title="CuiCan">
-    <img src="docs/v1/movecall-cuican-esp32s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/wmnologo_xingzhi_1.54.jpg" target="_blank" title="无名科技Nologo-星智-1.54">
-    <img src="docs/v1/wmnologo_xingzhi_1.54.jpg" width="240" />
-  </a>
-  <a href="docs/v1/sensecap_watcher.jpg" target="_blank" title="SenseCAP Watcher">
-    <img src="docs/v1/sensecap_watcher.jpg" width="240" />
-  </a>
-  <a href="docs/v1/esp-hi.jpg" target="_blank" title="ESP-HI 超低成本机器狗">
-    <img src="docs/v1/esp-hi.jpg" width="240" />
-  </a>
-</div>
-
-## 软件
-
-### 固件烧录
-
-新手第一次操作建议先不要搭建开发环境，直接使用免开发环境烧录的固件。
-
-固件默认接入 [xiaozhi.me](https://xiaozhi.me) 官方服务器，个人用户注册账号可以免费使用 Qwen 实时模型。
-
-👉 [新手烧录固件教程](https://ccnphfhqs21z.feishu.cn/wiki/Zpz4wXBtdimBrLk25WdcXzxcnNS)
-
-### 开发环境
-
-- Cursor 或 VSCode
-- 安装 ESP-IDF 插件，选择 SDK 版本 5.4 或以上
-- Linux 比 Windows 更好，编译速度快，也免去驱动问题的困扰
-- 本项目使用 Google C++ 代码风格，提交代码时请确保符合规范
-
-### 开发者文档
-
-- [自定义开发板指南](docs/custom-board_zh.md) - 学习如何为小智 AI 创建自定义开发板
-- [MCP 协议物联网控制用法说明](docs/mcp-usage_zh.md) - 了解如何通过 MCP 协议控制物联网设备
-- [MCP 协议交互流程](docs/mcp-protocol_zh.md) - 设备端 MCP 协议的实现方式
-- [MQTT + UDP 混合通信协议文档](docs/mqtt-udp_zh.md)
-- [一份详细的 WebSocket 通信协议文档](docs/websocket_zh.md)
-
-## 大模型配置
-
-如果你已经拥有一个小智 AI 聊天机器人设备，并且已接入官方服务器，可以登录 [xiaozhi.me](https://xiaozhi.me) 控制台进行配置。
-
-👉 [后台操作视频教程（旧版界面）](https://www.bilibili.com/video/BV1jUCUY2EKM/)
-
-## 相关开源项目
-
-在个人电脑上部署服务器，可以参考以下第三方开源的项目：
-
-- [xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) Python 服务器
-- [joey-zhou/xiaozhi-esp32-server-java](https://github.com/joey-zhou/xiaozhi-esp32-server-java) Java 服务器
-- [AnimeAIChat/xiaozhi-server-go](https://github.com/AnimeAIChat/xiaozhi-server-go) Golang 服务器
-- [hackers365/xiaozhi-esp32-server-golang](https://github.com/hackers365/xiaozhi-esp32-server-golang) Golang 服务器
-
-使用小智通信协议的第三方客户端项目：
-
-- [huangjunsen0406/py-xiaozhi](https://github.com/huangjunsen0406/py-xiaozhi) Python 客户端
-- [TOM88812/xiaozhi-android-client](https://github.com/TOM88812/xiaozhi-android-client) Android 客户端
-- [100askTeam/xiaozhi-linux](http://github.com/100askTeam/xiaozhi-linux) 百问科技提供的 Linux 客户端
-- [78/xiaozhi-sf32](https://github.com/78/xiaozhi-sf32) 思澈科技的蓝牙芯片固件
-- [QuecPython/solution-xiaozhiAI](https://github.com/QuecPython/solution-xiaozhiAI) 移远提供的 QuecPython 固件
-
-## 关于项目
-
-这是一个由虾哥开源的 ESP32 项目，以 MIT 许可证发布，允许任何人免费使用，修改或用于商业用途。
-
-我们希望通过这个项目，能够帮助大家了解 AI 硬件开发，将当下飞速发展的大语言模型应用到实际的硬件设备中。
-
-如果你有任何想法或建议，请随时提出 Issues 或加入 [Discord](https://discord.gg/C759fGMBcZ) 或 QQ 群：1011329060
-
-## Star History
-
-<a href="https://star-history.com/#78/xiaozhi-esp32&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
- </picture>
-</a>
+代码以 [MIT License](LICENSE) 发布。
