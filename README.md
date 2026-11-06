@@ -1,4 +1,27 @@
-# An MCP-based Chatbot
+# Zhìbàn Xiǎoguài — MCP-based Multimodal Desktop Companion Robot
+
+([中文](README_zh.md) | [日本語](README_ja.md))
+
+> A project for the National University Student IoT Design Competition · Guilin Institute of Information Technology · Team "方寸之间 (Between Inches)"
+
+This repository contains the ESP32-S3 firmware of **Zhìbàn Xiǎoguài**, a desktop companion robot. Built on **ESP-IDF v5.5 + FreeRTOS**, it wraps the device's hardware capabilities into **MCP (Model Context Protocol)** tool interfaces so that a cloud LLM can discover and invoke them autonomously, forming a closed loop of "voice interaction → LLM semantic understanding → MCP tool call → multimodal response". The enclosure is a self-designed 3D-printed puppy-style robot.
+
+### Features
+
+- **Voice dialogue**: WebSocket persistent connection + OPUS codec, multi-turn Q&A and storytelling with a cloud LLM
+- **Biomimetic motion**: 5 × SG90 servos driven by LEDC-PWM, with canned actions (wave, dance, walk, jump, bow / tail wag)
+- **Wheel-leg dual mode**: quadruped walking and N20 DC-motor wheeled driving in one transformable chassis, switching in ~3.2 s
+- **Environment sensing**: AHT10 temperature / humidity sampling with dual-threshold hysteresis alarms, reported to the cloud over MCP and answered with a voice care message
+- **Animated face**: 240×280 TFT display rendering expressions in real time with LVGL, switching emotion with dialogue state
+- **Memory & OTA**: NVS-persisted user preferences and nickname, cloud-side conversation history, OTA firmware upgrade
+
+### About this repository
+
+This repository is a customized derivative of the open-source project [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) v2. Upstream board support, communication protocols and the MCP framework are retained; the board configuration, motion control, display and sensing logic of Zhìbàn Xiǎoguài are implemented on top of it. The build procedure is the same as upstream (ESP-IDF v5.5); see the upstream documentation below.
+
+---
+
+## Upstream project: XiaoZhi AI Chatbot (An MCP-based Chatbot)
 
 (English | [中文](README_zh.md) | [日本語](README_ja.md))
 
